@@ -20,7 +20,8 @@ const ShareChallenge = ({ username, score }: ShareChallengeProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const { toast } = useToast();
   
-  const shareUrl = gameService.generateShareUrl(username);
+  // Generate share URL that includes the user's score
+  const shareUrl = `${window.location.origin}/game?inviter=${encodeURIComponent(username)}&score=${score.correct}`;
 
   const handleShare = async () => {
     // Try to use the Web Share API if available

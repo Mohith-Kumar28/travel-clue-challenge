@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import ClueCard from './ClueCard';
 import OptionButtons from './OptionButtons';
@@ -10,14 +10,19 @@ import HighScores from './HighScores';
 import { gameService } from '@/services/gameService';
 import { websocketService } from '@/services/websocketService';
 import { GameState, Destination, UserScore, WebSocketMessage } from '@/types';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Award, Party } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 
-const GameContainer = () => {
+interface GameContainerProps {
+  inviterScore?: number | null;
+}
+
+const GameContainer = ({ inviterScore }: GameContainerProps) => {
   const [searchParams] = useSearchParams();
   const inviterUsername = searchParams.get('inviter');
   const roomId = searchParams.get('roomId');
   const { toast } = useToast();
+  const scoreBeatenRef = useRef(false);
   
   const [gameState, setGameState] = useState<GameState>({
     currentDestination: null,
@@ -37,9 +42,10 @@ const GameContainer = () => {
     roomId: roomId || undefined
   });
   
-  const [inviterScore, setInviterScore] = useState<UserScore | null>(null);
+  const [inviterScoreData, setInviterScoreData] = useState<UserScore | null>(null);
   const [highScores, setHighScores] = useState<UserScore[]>([]);
   const [roomParticipants, setRoomParticipants] = useState<UserScore[]>([]);
+  const [showCelebration, setShowCelebration] = useState(false);
 
   // Handle WebSocket messages
   const handleWebSocketMessage = (message: WebSocketMessage) => {
@@ -160,9 +166,22 @@ const GameContainer = () => {
       // Save the username to session storage
       sessionStorage.setItem('globetrotter_username', guestUsername);
       
-      // Get the inviter's score to display
-      const inviterScoreData = gameService.getScore(inviterUsername);
-      setInviterScore(inviterScoreData);
+      // Set up the inviter's score data if we have it
+      if (inviterUsername && inviterScore !== null) {
+        setInviterScoreData({
+          username: inviterUsername,
+          score: {
+            correct: inviterScore,
+            incorrect: 0,
+            total: inviterScore,
+          },
+          beaten: false
+        });
+      } else if (inviterUsername) {
+        // Try to get the inviter's score from gameService
+        const inviterScoreFromService = gameService.getScore(inviterUsername);
+        setInviterScoreData(inviterScoreFromService);
+      }
     }
     
     // Load the first question
@@ -186,7 +205,34 @@ const GameContainer = () => {
       websocketService.leaveRoom();
       websocketService.disconnect();
     };
-  }, [inviterUsername, roomId]);
+  }, [inviterUsername, roomId, inviterScore]);
+
+  // Effect to check if user has beaten the inviter's score
+  useEffect(() => {
+    // Check if we have an inviter's score to compare against
+    if (inviterScoreData && 
+        !inviterScoreData.beaten && 
+        gameState.score.correct > inviterScoreData.score.correct) {
+      
+      // Mark as beaten to avoid showing the celebration multiple times
+      setInviterScoreData(prev => prev ? { ...prev, beaten: true } : null);
+      
+      // Show celebration animation
+      setShowCelebration(true);
+      
+      // Show toast notification
+      toast({
+        title: "🎉 New Achievement!",
+        description: `You beat ${inviterScoreData.username}'s score of ${inviterScoreData.score.correct}!`,
+        variant: "default",
+      });
+      
+      // Hide celebration after 5 seconds
+      setTimeout(() => {
+        setShowCelebration(false);
+      }, 5000);
+    }
+  }, [gameState.score.correct, inviterScoreData, toast]);
 
   const updateHighScores = () => {
     // If we're in a room, get the room-specific scores, otherwise get all scores
@@ -306,7 +352,34 @@ const GameContainer = () => {
     gameState.clueIndex < gameState.currentDestination.clues.length - 1;
 
   return (
-    <div className="w-full max-w-4xl mx-auto p-6 space-y-8">
+    <div className="w-full max-w-4xl mx-auto p-6 space-y-8 relative">
+      {/* Celebration overlay */}
+      {showCelebration && (
+        <div className="fixed inset-0 pointer-events-none z-50 flex items-center justify-center">
+          <div className="celebration-container">
+            {Array.from({ length: 50 }).map((_, i) => (
+              <div 
+                key={i}
+                className="confetti animate-confetti"
+                style={{
+                  left: `${Math.random() * 100}%`,
+                  top: '-20px',
+                  width: `${Math.random() * 15 + 5}px`,
+                  height: `${Math.random() * 15 + 5}px`,
+                  backgroundColor: `hsl(${Math.random() * 360}, 70%, 50%)`,
+                  animationDelay: `${Math.random() * 2}s`,
+                  animationDuration: `${Math.random() * 3 + 2}s`,
+                }}
+              />
+            ))}
+            <div className="bg-white/90 p-6 rounded-xl shadow-lg animate-bounce text-center z-10">
+              <h2 className="text-2xl font-bold text-primary mb-2">YOU DID IT! 🏆</h2>
+              <p className="text-lg">You beat {inviterScoreData?.username}'s score!</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header area with scores */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <ScoreDisplay score={gameState.score} username={gameState.username} />
@@ -326,14 +399,22 @@ const GameContainer = () => {
       )}
       
       {/* Inviter score display (if applicable) */}
-      {inviterScore && (
-        <div className="glass-card p-4 animate-fade-in">
-          <div className="flex items-center text-gray-700">
-            <AlertTriangle className="h-5 w-5 text-amber-500 mr-2" />
-            <p>
-              <span className="font-medium">{inviterUsername}</span> has challenged you! Their score: 
-              <span className="font-bold ml-1">{inviterScore.score.correct}/{inviterScore.score.total}</span>
-            </p>
+      {inviterScoreData && (
+        <div className={`glass-card p-4 animate-fade-in ${inviterScoreData.beaten ? 'border-2 border-green-500' : ''}`}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center text-gray-700">
+              <Award className={`h-5 w-5 ${inviterScoreData.beaten ? 'text-green-500' : 'text-amber-500'} mr-2`} />
+              <p>
+                <span className="font-medium">{inviterUsername}</span> has challenged you! Their score: 
+                <span className="font-bold ml-1">{inviterScoreData.score.correct}/{inviterScoreData.score.total || inviterScoreData.score.correct}</span>
+              </p>
+            </div>
+            
+            {inviterScoreData.beaten && (
+              <div className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full font-medium flex items-center">
+                <span>Beaten!</span> 🏆
+              </div>
+            )}
           </div>
         </div>
       )}

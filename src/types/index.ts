@@ -1,4 +1,3 @@
-
 export interface Destination {
   id: string;
   name: string;
@@ -34,6 +33,7 @@ export interface UserScore {
   };
   timestamp?: number;
   roomId?: string; // Added roomId for challenge rooms
+  beaten?: boolean; // Track if this score has been beaten by the current user
 }
 
 export interface GameRoom {
