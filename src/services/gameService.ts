@@ -167,6 +167,14 @@ class GameService {
     return destination.clues[randomIndex];
   }
 
+  async getClueByIndex(destination: Destination, index: number): Promise<string> {
+    // Make sure the index is within bounds
+    if (index < 0 || index >= destination.clues.length) {
+      return destination.clues[0];
+    }
+    return destination.clues[index];
+  }
+
   async getRandomFact(destination: Destination): Promise<string> {
     const randomIndex = Math.floor(Math.random() * destination.facts.length);
     return destination.facts[randomIndex];
@@ -180,7 +188,8 @@ class GameService {
           correct: 0,
           incorrect: 0,
           total: 0
-        }
+        },
+        timestamp: Date.now()
       };
     }
 
@@ -192,6 +201,9 @@ class GameService {
     } else {
       score.incorrect += 1;
     }
+    
+    // Update timestamp
+    userScores[username].timestamp = Date.now();
   }
 
   getScore(username: string): UserScore {
@@ -205,6 +217,24 @@ class GameService {
     };
   }
 
+  getAllScores(): UserScore[] {
+    return Object.values(userScores)
+      .sort((a, b) => {
+        // First sort by correct answers
+        if (b.score.correct !== a.score.correct) {
+          return b.score.correct - a.score.correct;
+        }
+        // If tied, sort by percentage
+        const aPercentage = a.score.total > 0 ? a.score.correct / a.score.total : 0;
+        const bPercentage = b.score.total > 0 ? b.score.correct / b.score.total : 0;
+        if (bPercentage !== aPercentage) {
+          return bPercentage - aPercentage;
+        }
+        // If still tied, sort by most recent
+        return (b.timestamp || 0) - (a.timestamp || 0);
+      });
+  }
+
   // This would normally be a POST request to create a user
   registerUser(username: string): void {
     if (!userScores[username]) {
@@ -214,7 +244,8 @@ class GameService {
           correct: 0,
           incorrect: 0,
           total: 0
-        }
+        },
+        timestamp: Date.now()
       };
     }
   }

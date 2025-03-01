@@ -20,6 +20,7 @@ export interface GameState {
   username: string;
   displayedClue: string;
   displayedFact: string;
+  clueIndex: number;
   loading: boolean;
 }
 
@@ -30,4 +31,5 @@ export interface UserScore {
     incorrect: number;
     total: number;
   };
+  timestamp?: number;
 }

@@ -6,13 +6,16 @@ import OptionButtons from './OptionButtons';
 import ResultFeedback from './ResultFeedback';
 import ScoreDisplay from './ScoreDisplay';
 import ShareChallenge from './ShareChallenge';
+import HighScores from './HighScores';
 import { gameService } from '@/services/gameService';
-import { GameState, Destination } from '@/types';
+import { GameState, Destination, UserScore } from '@/types';
 import { AlertTriangle } from 'lucide-react';
+import { useToast } from '@/components/ui/use-toast';
 
 const GameContainer = () => {
   const [searchParams] = useSearchParams();
   const inviterUsername = searchParams.get('inviter');
+  const { toast } = useToast();
   
   const [gameState, setGameState] = useState<GameState>({
     currentDestination: null,
@@ -27,10 +30,12 @@ const GameContainer = () => {
     username: '',
     displayedClue: '',
     displayedFact: '',
+    clueIndex: 0,
     loading: true
   });
   
-  const [inviterScore, setInviterScore] = useState(null);
+  const [inviterScore, setInviterScore] = useState<UserScore | null>(null);
+  const [highScores, setHighScores] = useState<UserScore[]>([]);
 
   useEffect(() => {
     // Get username from session storage
@@ -59,13 +64,26 @@ const GameContainer = () => {
     
     // Load the first question
     loadNextQuestion();
+    
+    // Load high scores
+    updateHighScores();
+    
+    // Set up interval to refresh high scores
+    const interval = setInterval(updateHighScores, 10000);
+    return () => clearInterval(interval);
   }, [inviterUsername]);
+
+  const updateHighScores = () => {
+    const scores = gameService.getAllScores();
+    setHighScores(scores);
+  };
 
   const loadNextQuestion = async () => {
     setGameState(prev => ({
       ...prev,
       selectedAnswer: null,
       isCorrect: null,
+      clueIndex: 0,
       loading: true
     }));
 
@@ -76,8 +94,8 @@ const GameContainer = () => {
       // Get random options including the correct destination
       const options = await gameService.getRandomOptions(destination);
       
-      // Get a random clue for this destination
-      const clue = await gameService.getRandomClue(destination);
+      // Get first clue for this destination
+      const clue = await gameService.getClueByIndex(destination, 0);
       
       // Get a random fact for this destination
       const fact = await gameService.getRandomFact(destination);
@@ -121,7 +139,50 @@ const GameContainer = () => {
       isCorrect,
       score: newScore
     }));
+    
+    // Update high scores
+    updateHighScores();
   };
+
+  const handleRequestHint = async () => {
+    if (!gameState.currentDestination || gameState.selectedAnswer !== null) return;
+    
+    const nextClueIndex = gameState.clueIndex + 1;
+    
+    // Check if we have more clues available
+    if (nextClueIndex < gameState.currentDestination.clues.length) {
+      try {
+        const nextClue = await gameService.getClueByIndex(
+          gameState.currentDestination,
+          nextClueIndex
+        );
+        
+        // Update game state with the new clue
+        setGameState(prev => ({
+          ...prev,
+          displayedClue: nextClue,
+          clueIndex: nextClueIndex
+        }));
+        
+        toast({
+          title: "New hint revealed!",
+          description: "Here's another clue to help you guess.",
+        });
+      } catch (error) {
+        console.error('Error getting next clue:', error);
+      }
+    } else {
+      toast({
+        title: "No more hints available",
+        description: "You've seen all the clues for this destination.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Check if there are more clues available
+  const hasMoreClues = gameState.currentDestination && 
+    gameState.clueIndex < gameState.currentDestination.clues.length - 1;
 
   return (
     <div className="w-full max-w-4xl mx-auto p-6 space-y-8">
@@ -144,12 +205,21 @@ const GameContainer = () => {
         </div>
       )}
       
+      {/* High Scores */}
+      {highScores.length > 0 && (
+        <div className="mb-6">
+          <HighScores scores={highScores} currentUsername={gameState.username} />
+        </div>
+      )}
+      
       {/* Main game content */}
       <div className="space-y-8">
         {/* Clue card */}
         <ClueCard 
           clue={gameState.displayedClue} 
-          isLoading={gameState.loading} 
+          isLoading={gameState.loading}
+          onRequestHint={handleRequestHint}
+          hintsAvailable={hasMoreClues && gameState.selectedAnswer === null}
         />
         
         {/* Options */}
