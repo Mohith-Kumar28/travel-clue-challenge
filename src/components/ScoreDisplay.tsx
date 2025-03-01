@@ -7,10 +7,11 @@ interface ScoreDisplayProps {
     incorrect: number;
     total: number;
   };
-  username: string;
+  displayName?: string;
+  username?: string;
 }
 
-const ScoreDisplay = ({ score, username }: ScoreDisplayProps) => {
+const ScoreDisplay = ({ score, displayName = "Score", username }: ScoreDisplayProps) => {
   const percentage = score.total > 0 ? Math.round((score.correct / score.total) * 100) : 0;
 
   return (
@@ -19,7 +20,7 @@ const ScoreDisplay = ({ score, username }: ScoreDisplayProps) => {
         <Award className="h-6 w-6 text-primary" />
       </div>
       <div className="flex-1">
-        <p className="text-sm text-gray-500">{username}'s Score</p>
+        <p className="text-sm text-gray-500">{displayName}</p>
         <div className="flex items-baseline space-x-2">
           <p className="text-2xl font-bold text-gray-800">{score.correct}</p>
           <p className="text-sm text-gray-500">correct of {score.total} ({percentage}%)</p>

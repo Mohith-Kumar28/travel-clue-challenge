@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import ClueCard from './ClueCard';
@@ -10,7 +9,7 @@ import HighScores from './HighScores';
 import { gameService } from '@/services/gameService';
 import { websocketService } from '@/services/websocketService';
 import { GameState, Destination, UserScore, WebSocketMessage } from '@/types';
-import { AlertTriangle, Award, Party } from 'lucide-react';
+import { AlertTriangle, Award, Trophy, Sparkles } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 
 interface GameContainerProps {
@@ -43,16 +42,13 @@ const GameContainer = ({ inviterScore }: GameContainerProps) => {
   });
   
   const [inviterScoreData, setInviterScoreData] = useState<UserScore | null>(null);
-  const [highScores, setHighScores] = useState<UserScore[]>([]);
   const [roomParticipants, setRoomParticipants] = useState<UserScore[]>([]);
   const [showCelebration, setShowCelebration] = useState(false);
 
-  // Handle WebSocket messages
   const handleWebSocketMessage = (message: WebSocketMessage) => {
     switch (message.type) {
       case 'score_update':
         if (message.roomId === gameState.roomId) {
-          // Update the room participants list with the new score
           setRoomParticipants(prevParticipants => {
             const updatedParticipants = [...prevParticipants];
             const index = updatedParticipants.findIndex(p => p.username === message.score.username);
@@ -66,12 +62,10 @@ const GameContainer = ({ inviterScore }: GameContainerProps) => {
             return updatedParticipants.sort((a, b) => b.score.correct - a.score.correct);
           });
           
-          // If this is the inviter's score, update that separately
           if (inviterUsername && message.score.username === inviterUsername) {
-            setInviterScore(message.score);
+            setInviterScoreData(message.score);
           }
           
-          // Show a toast notification about the score update
           if (message.score.username !== gameState.username) {
             toast({
               title: "Score Updated",
@@ -87,7 +81,6 @@ const GameContainer = ({ inviterScore }: GameContainerProps) => {
             title: "New Player Joined",
             description: `${message.username} has joined the challenge!`,
           });
-          // Refresh room participants
           if (gameState.roomId) {
             setRoomParticipants(gameService.getRoomScores(gameState.roomId));
           }
@@ -105,7 +98,6 @@ const GameContainer = ({ inviterScore }: GameContainerProps) => {
             description: `${message.username} has left the challenge.`,
             variant: "destructive"
           });
-          // Refresh room participants
           if (gameState.roomId) {
             setRoomParticipants(gameService.getRoomScores(gameState.roomId));
           }
@@ -115,17 +107,12 @@ const GameContainer = ({ inviterScore }: GameContainerProps) => {
   };
 
   useEffect(() => {
-    // Connect to WebSocket
     websocketService.connect();
-    
-    // Subscribe to WebSocket messages
     const unsubscribe = websocketService.onMessage(handleWebSocketMessage);
     
-    // Get username from session storage
     const storedUsername = sessionStorage.getItem('globetrotter_username');
     
     if (storedUsername) {
-      // Initialize the game with the stored username
       const userScore = gameService.getScore(storedUsername);
       
       setGameState(prev => ({
@@ -134,16 +121,13 @@ const GameContainer = ({ inviterScore }: GameContainerProps) => {
         score: userScore.score
       }));
       
-      // If we have a roomId, join the room
       if (roomId) {
         gameService.joinRoom(storedUsername, roomId);
         websocketService.joinRoom(storedUsername, roomId);
         
-        // Get the room participants
         setRoomParticipants(gameService.getRoomScores(roomId));
       }
     } else if (inviterUsername) {
-      // If we have an inviter but no username, we'll use "Guest" for now
       const guestUsername = "Guest_" + Math.random().toString(36).substring(2, 7);
       
       setGameState(prev => ({
@@ -151,22 +135,17 @@ const GameContainer = ({ inviterScore }: GameContainerProps) => {
         username: guestUsername
       }));
       
-      // Register the guest user
       gameService.registerUser(guestUsername);
       
-      // If we have a roomId, join the room
       if (roomId) {
         gameService.joinRoom(guestUsername, roomId);
         websocketService.joinRoom(guestUsername, roomId);
         
-        // Get the room participants
         setRoomParticipants(gameService.getRoomScores(roomId));
       }
       
-      // Save the username to session storage
       sessionStorage.setItem('globetrotter_username', guestUsername);
       
-      // Set up the inviter's score data if we have it
       if (inviterUsername && inviterScore !== null) {
         setInviterScoreData({
           username: inviterUsername,
@@ -178,27 +157,19 @@ const GameContainer = ({ inviterScore }: GameContainerProps) => {
           beaten: false
         });
       } else if (inviterUsername) {
-        // Try to get the inviter's score from gameService
         const inviterScoreFromService = gameService.getScore(inviterUsername);
         setInviterScoreData(inviterScoreFromService);
       }
     }
     
-    // Load the first question
     loadNextQuestion();
     
-    // Load high scores
-    updateHighScores();
-    
-    // Set up interval to refresh high scores and room participants
     const interval = setInterval(() => {
-      updateHighScores();
       if (gameState.roomId) {
         setRoomParticipants(gameService.getRoomScores(gameState.roomId));
       }
     }, 10000);
     
-    // Clean up when component unmounts
     return () => {
       clearInterval(interval);
       unsubscribe();
@@ -207,43 +178,26 @@ const GameContainer = ({ inviterScore }: GameContainerProps) => {
     };
   }, [inviterUsername, roomId, inviterScore]);
 
-  // Effect to check if user has beaten the inviter's score
   useEffect(() => {
-    // Check if we have an inviter's score to compare against
     if (inviterScoreData && 
         !inviterScoreData.beaten && 
         gameState.score.correct > inviterScoreData.score.correct) {
       
-      // Mark as beaten to avoid showing the celebration multiple times
       setInviterScoreData(prev => prev ? { ...prev, beaten: true } : null);
       
-      // Show celebration animation
       setShowCelebration(true);
       
-      // Show toast notification
       toast({
         title: "🎉 New Achievement!",
         description: `You beat ${inviterScoreData.username}'s score of ${inviterScoreData.score.correct}!`,
         variant: "default",
       });
       
-      // Hide celebration after 5 seconds
       setTimeout(() => {
         setShowCelebration(false);
       }, 5000);
     }
   }, [gameState.score.correct, inviterScoreData, toast]);
-
-  const updateHighScores = () => {
-    // If we're in a room, get the room-specific scores, otherwise get all scores
-    if (gameState.roomId) {
-      const roomScores = gameService.getRoomScores(gameState.roomId);
-      setHighScores(roomScores);
-    } else {
-      const scores = gameService.getAllScores();
-      setHighScores(scores);
-    }
-  };
 
   const loadNextQuestion = async () => {
     setGameState(prev => ({
@@ -255,19 +209,14 @@ const GameContainer = ({ inviterScore }: GameContainerProps) => {
     }));
 
     try {
-      // Get a random destination
       const destination = await gameService.getRandomDestination();
       
-      // Get random options including the correct destination
       const options = await gameService.getRandomOptions(destination);
       
-      // Get first clue for this destination
       const clue = await gameService.getClueByIndex(destination, 0);
       
-      // Get a random fact for this destination
       const fact = await gameService.getRandomFact(destination);
       
-      // Update game state
       setGameState(prev => ({
         ...prev,
         currentDestination: destination,
@@ -288,7 +237,6 @@ const GameContainer = ({ inviterScore }: GameContainerProps) => {
   const handleSelectAnswer = (destinationId: string) => {
     const isCorrect = destinationId === gameState.currentDestination?.id;
     
-    // Update score
     const newScore = {
       ...gameState.score,
       total: gameState.score.total + 1,
@@ -296,10 +244,8 @@ const GameContainer = ({ inviterScore }: GameContainerProps) => {
       incorrect: !isCorrect ? gameState.score.incorrect + 1 : gameState.score.incorrect
     };
     
-    // Save score to the service, passing the roomId if we're in a room
     gameService.saveScore(gameState.username, isCorrect, gameState.roomId);
     
-    // Update game state
     setGameState(prev => ({
       ...prev,
       selectedAnswer: destinationId,
@@ -307,7 +253,6 @@ const GameContainer = ({ inviterScore }: GameContainerProps) => {
       score: newScore
     }));
     
-    // Update high scores
     updateHighScores();
   };
 
@@ -316,7 +261,6 @@ const GameContainer = ({ inviterScore }: GameContainerProps) => {
     
     const nextClueIndex = gameState.clueIndex + 1;
     
-    // Check if we have more clues available
     if (nextClueIndex < gameState.currentDestination.clues.length) {
       try {
         const nextClue = await gameService.getClueByIndex(
@@ -324,7 +268,6 @@ const GameContainer = ({ inviterScore }: GameContainerProps) => {
           nextClueIndex
         );
         
-        // Update game state with the new clue
         setGameState(prev => ({
           ...prev,
           displayedClue: nextClue,
@@ -347,13 +290,11 @@ const GameContainer = ({ inviterScore }: GameContainerProps) => {
     }
   };
 
-  // Check if there are more clues available
   const hasMoreClues = gameState.currentDestination && 
     gameState.clueIndex < gameState.currentDestination.clues.length - 1;
 
   return (
     <div className="w-full max-w-4xl mx-auto p-6 space-y-8 relative">
-      {/* Celebration overlay */}
       {showCelebration && (
         <div className="fixed inset-0 pointer-events-none z-50 flex items-center justify-center">
           <div className="celebration-container">
@@ -380,13 +321,11 @@ const GameContainer = ({ inviterScore }: GameContainerProps) => {
         </div>
       )}
 
-      {/* Header area with scores */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <ScoreDisplay score={gameState.score} username={gameState.username} />
+        <ScoreDisplay score={gameState.score} displayName="Your Score" />
         <ShareChallenge username={gameState.username} score={gameState.score} />
       </div>
       
-      {/* Room information */}
       {gameState.roomId && (
         <div className="glass-card p-4 animate-fade-in">
           <div className="flex items-center text-gray-700">
@@ -398,12 +337,11 @@ const GameContainer = ({ inviterScore }: GameContainerProps) => {
         </div>
       )}
       
-      {/* Inviter score display (if applicable) */}
       {inviterScoreData && (
         <div className={`glass-card p-4 animate-fade-in ${inviterScoreData.beaten ? 'border-2 border-green-500' : ''}`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center text-gray-700">
-              <Award className={`h-5 w-5 ${inviterScoreData.beaten ? 'text-green-500' : 'text-amber-500'} mr-2`} />
+              <Trophy className={`h-5 w-5 ${inviterScoreData.beaten ? 'text-green-500' : 'text-amber-500'} mr-2`} />
               <p>
                 <span className="font-medium">{inviterUsername}</span> has challenged you! Their score: 
                 <span className="font-bold ml-1">{inviterScoreData.score.correct}/{inviterScoreData.score.total || inviterScoreData.score.correct}</span>
@@ -412,26 +350,23 @@ const GameContainer = ({ inviterScore }: GameContainerProps) => {
             
             {inviterScoreData.beaten && (
               <div className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full font-medium flex items-center">
-                <span>Beaten!</span> 🏆
+                <span>Beaten!</span> <Sparkles className="h-3 w-3 ml-1" />
               </div>
             )}
           </div>
         </div>
       )}
       
-      {/* High Scores (prioritize room participants if we're in a room) */}
-      {(gameState.roomId ? roomParticipants : highScores).length > 0 && (
+      {gameState.roomId && roomParticipants.length > 0 && (
         <div className="mb-6">
           <HighScores 
-            scores={gameState.roomId ? roomParticipants : highScores} 
+            scores={roomParticipants} 
             currentUsername={gameState.username} 
           />
         </div>
       )}
       
-      {/* Main game content */}
       <div className="space-y-8">
-        {/* Clue card */}
         <ClueCard 
           clue={gameState.displayedClue} 
           isLoading={gameState.loading}
@@ -439,7 +374,6 @@ const GameContainer = ({ inviterScore }: GameContainerProps) => {
           hintsAvailable={hasMoreClues && gameState.selectedAnswer === null}
         />
         
-        {/* Options */}
         <div className="space-y-2">
           <h3 className="text-lg font-medium text-gray-700">Where am I?</h3>
           <OptionButtons
@@ -451,7 +385,6 @@ const GameContainer = ({ inviterScore }: GameContainerProps) => {
           />
         </div>
         
-        {/* Result feedback and next button */}
         <ResultFeedback
           isCorrect={gameState.isCorrect}
           fact={gameState.displayedFact}
