@@ -22,6 +22,7 @@ export interface GameState {
   displayedFact: string;
   clueIndex: number;
   loading: boolean;
+  roomId?: string; // Added roomId for challenge rooms
 }
 
 export interface UserScore {
@@ -32,4 +33,19 @@ export interface UserScore {
     total: number;
   };
   timestamp?: number;
+  roomId?: string; // Added roomId for challenge rooms
 }
+
+export interface GameRoom {
+  id: string;
+  participants: UserScore[];
+  createdBy: string;
+  createdAt: number;
+}
+
+// WebSocket message types
+export type WebSocketMessage = 
+  | { type: 'join_room'; username: string; roomId: string }
+  | { type: 'score_update'; score: UserScore; roomId: string }
+  | { type: 'room_data'; participants: UserScore[] }
+  | { type: 'leave_room'; username: string; roomId: string };

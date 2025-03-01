@@ -1,6 +1,6 @@
 
 import { UserScore } from '@/types';
-import { Trophy, Medal } from 'lucide-react';
+import { Trophy, Medal, Users } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 
 interface HighScoresProps {
@@ -10,13 +10,27 @@ interface HighScoresProps {
 
 const HighScores = ({ scores, currentUsername }: HighScoresProps) => {
   if (!scores.length) return null;
+  
+  // Check if these scores are from a room (all have the same roomId)
+  const isRoomScores = scores.length > 0 && 
+    scores[0].roomId !== undefined && 
+    scores.every(s => s.roomId === scores[0].roomId);
 
   return (
     <Card className="glass-card">
       <CardHeader className="pb-2">
         <CardTitle className="text-lg flex items-center gap-2">
-          <Trophy className="h-5 w-5 text-amber-500" />
-          <span>High Scores</span>
+          {isRoomScores ? (
+            <>
+              <Users className="h-5 w-5 text-green-500" />
+              <span>Challenge Room</span>
+            </>
+          ) : (
+            <>
+              <Trophy className="h-5 w-5 text-amber-500" />
+              <span>High Scores</span>
+            </>
+          )}
         </CardTitle>
       </CardHeader>
       <CardContent>

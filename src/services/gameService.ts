@@ -1,5 +1,5 @@
-
-import { Destination, UserScore } from '@/types';
+import { Destination, UserScore, GameRoom } from '@/types';
+import { websocketService } from './websocketService';
 
 // This is a mock dataset that would normally be fetched from a backend
 const mockDestinations: Destination[] = [
@@ -127,6 +127,7 @@ const mockDestinations: Destination[] = [
 
 // This would normally be a database or backend service
 const userScores: Record<string, UserScore> = {};
+const gameRooms: Record<string, GameRoom> = {};
 
 // Create a game service to handle all game logic
 class GameService {
@@ -180,7 +181,7 @@ class GameService {
     return destination.facts[randomIndex];
   }
 
-  saveScore(username: string, isCorrect: boolean): void {
+  saveScore(username: string, isCorrect: boolean, roomId?: string): void {
     if (!userScores[username]) {
       userScores[username] = {
         username,
@@ -189,7 +190,8 @@ class GameService {
           incorrect: 0,
           total: 0
         },
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        roomId
       };
     }
 
@@ -204,6 +206,12 @@ class GameService {
     
     // Update timestamp
     userScores[username].timestamp = Date.now();
+    
+    // If user is in a room, update the score via WebSocket
+    if (roomId) {
+      userScores[username].roomId = roomId;
+      websocketService.updateScore(userScores[username]);
+    }
   }
 
   getScore(username: string): UserScore {
@@ -235,7 +243,64 @@ class GameService {
       });
   }
 
-  // This would normally be a POST request to create a user
+  getRoomScores(roomId: string): UserScore[] {
+    return Object.values(userScores)
+      .filter(score => score.roomId === roomId)
+      .sort((a, b) => {
+        // First sort by correct answers
+        if (b.score.correct !== a.score.correct) {
+          return b.score.correct - a.score.correct;
+        }
+        // If tied, sort by percentage
+        const aPercentage = a.score.total > 0 ? a.score.correct / a.score.total : 0;
+        const bPercentage = b.score.total > 0 ? b.score.correct / b.score.total : 0;
+        if (bPercentage !== aPercentage) {
+          return bPercentage - aPercentage;
+        }
+        // If still tied, sort by most recent
+        return (b.timestamp || 0) - (a.timestamp || 0);
+      });
+  }
+
+  createRoom(username: string): string {
+    const roomId = Math.random().toString(36).substring(2, 10);
+    
+    gameRooms[roomId] = {
+      id: roomId,
+      participants: [],
+      createdBy: username,
+      createdAt: Date.now()
+    };
+    
+    return roomId;
+  }
+
+  getRoom(roomId: string): GameRoom | null {
+    return gameRooms[roomId] || null;
+  }
+
+  joinRoom(username: string, roomId: string): boolean {
+    const room = this.getRoom(roomId);
+    
+    if (!room) return false;
+    
+    // Check if user is already in the room
+    const isInRoom = room.participants.some(p => p.username === username);
+    
+    if (!isInRoom) {
+      const userScore = this.getScore(username);
+      userScore.roomId = roomId;
+      room.participants.push(userScore);
+      
+      // Update userScores record as well
+      if (userScores[username]) {
+        userScores[username].roomId = roomId;
+      }
+    }
+    
+    return true;
+  }
+
   registerUser(username: string): void {
     if (!userScores[username]) {
       userScores[username] = {
@@ -250,10 +315,15 @@ class GameService {
     }
   }
 
-  // Generate a share URL with the username
   generateShareUrl(username: string): string {
+    // Create a new room for this challenge
+    const roomId = this.createRoom(username);
+    
+    // Add the user to the room
+    this.joinRoom(username, roomId);
+    
     // In a real app, this would be a proper URL to your deployed app
-    return `${window.location.origin}/game?inviter=${encodeURIComponent(username)}`;
+    return `${window.location.origin}/game?inviter=${encodeURIComponent(username)}&roomId=${encodeURIComponent(roomId)}`;
   }
 }
 
